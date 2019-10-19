@@ -2,4 +2,6 @@
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
-/.vs/AirlockScript/v16/Server/sqlite3
+/.vs
+/bin
+/obj
