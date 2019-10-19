@@ -21,7 +21,6 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        //123
         IMyDoor outerDoor;
         IMyDoor innerDoor;
 
