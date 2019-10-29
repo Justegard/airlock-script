@@ -21,13 +21,12 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        IMyDoor outerDoor;
-        IMyDoor innerDoor;
-
-        IMySensorBlock innerSensor;
-        IMySensorBlock outerSensor;
-        IMyAirVent airVent;
-        IMyLightingBlock airlockLamp;
+        List<IMyDoor> innerDoors = new List<IMyDoor>();
+        List<IMyDoor> outerDoors = new List<IMyDoor>();
+        List<IMyAirVent> airvents = new List<IMyAirVent>();
+        List<IMySensorBlock> innerSensors = new List<IMySensorBlock>();
+        List<IMySensorBlock> outerSensors = new List<IMySensorBlock>();
+        List<IMyLightingBlock> lights = new List<IMyLightingBlock>();
 
         enum AirlockState
         {
@@ -42,130 +41,160 @@ namespace IngameScript
             depressurizing
         }
 
-        AirlockState currentState;
+        List<AirlockState> currentState = new List<AirlockState>();
 
         public Program()
         {
             Runtime.UpdateFrequency = UpdateFrequency.Update10;
-            currentState = AirlockState.init;
+            bool initOk = true;
 
-            string outerDoorName = "AirlockOuterDoor";
-            string innerDoorName = "AirlockInnerDoor";
-            string innerSensorName = "AirlockInnerSensor";
-            string outerSensorName = "AirlockOuterSensor";
-            string airVentName = "AirlockVent";
-            string airlockLampName = "AirlockLamp";
+            List<IMyBlockGroup> airlockGroups = new List<IMyBlockGroup>();
+            List<IMyBlockGroup> allGroups = new List<IMyBlockGroup>();
+            List<IMyDoor> doors = new List<IMyDoor>();
+            List<IMySensorBlock> sensors = new List<IMySensorBlock>();
+            List<IMyAirVent> airvents = new List<IMyAirVent>();
+            List<IMyInteriorLight> lights = new List<IMyInteriorLight>();
 
-            outerDoor = GridTerminalSystem.GetBlockWithName(outerDoorName) as IMyDoor;
-            innerDoor = GridTerminalSystem.GetBlockWithName(innerDoorName) as IMyDoor;
-            innerSensor = GridTerminalSystem.GetBlockWithName(innerSensorName) as IMySensorBlock;
-            outerSensor = GridTerminalSystem.GetBlockWithName(outerSensorName) as IMySensorBlock;
-            airVent = GridTerminalSystem.GetBlockWithName(airVentName) as IMyAirVent;
-            airlockLamp = GridTerminalSystem.GetBlockWithName(airlockLampName) as IMyLightingBlock;
+            GridTerminalSystem.GetBlockGroups(allGroups);
 
-            // Check that all mandatory entities are accounted for.
-            if (outerDoor == null ||
-                innerDoor == null ||
-                innerSensor == null ||
-                outerSensor == null ||
-                airVent == null)
+            foreach (IMyBlockGroup group in allGroups)
             {
-                Echo("Airlock not found!");
+                if (group.Name.Contains("[Airlock]"))
+                {
+                    airlockGroups.Add(group);
+                }
+            }
+            foreach (IMyBlockGroup group in airlockGroups)
+            {
+                doors.Clear();
+                sensors.Clear();
+                airvents.Clear();
+                lights.Clear();
+                group.GetBlocksOfType(doors);
+                group.GetBlocksOfType(sensors);
+                group.GetBlocksOfType(airvents);
+                group.GetBlocksOfType(lights);
+
+                if (!(GetInnerDoor(doors) || GetOuterDoor(doors) || GetInnerSensor(sensors) || GetOuterSensor(sensors) || GetAirVent(airvents)))
+                {
+                    Echo($"Error in group {group.Name}");
+                    initOk = false;
+                    break;
+                }
+
+                // Lights are optional.
+                GetLight(lights);
+                currentState.Add(new AirlockState());
+            }
+            foreach (IMySensorBlock innerSensor in innerSensors)
+            {
+                innerSensor.PlayProximitySound = false;
+                innerSensor.LeftExtend = 0;
+                innerSensor.RightExtend = 0;
+                innerSensor.TopExtend = 0;
+                innerSensor.BottomExtend = 3;
+                innerSensor.FrontExtend = 2.5f;
+                innerSensor.BackExtend = 3;
+            }
+            foreach (IMySensorBlock outerSensor in outerSensors)
+            {
+                outerSensor.PlayProximitySound = false;
+                outerSensor.LeftExtend = 0;
+                outerSensor.RightExtend = 0;
+                outerSensor.TopExtend = 0;
+                outerSensor.BottomExtend = 3;
+                outerSensor.FrontExtend = 2.5f;
+                outerSensor.BackExtend = 3;
             }
 
-            innerSensor.PlayProximitySound = false;
-            innerSensor.LeftExtend = 0;
-            innerSensor.RightExtend = 0;
-            innerSensor.TopExtend = 0;
-            innerSensor.BottomExtend = 3;
-            innerSensor.FrontExtend = 2.5f;
-            innerSensor.BackExtend = 3;
-
-            outerSensor.PlayProximitySound = false;
-            outerSensor.LeftExtend = 0;
-            outerSensor.RightExtend = 0;
-            outerSensor.TopExtend = 0;
-            outerSensor.BottomExtend = 3;
-            outerSensor.FrontExtend = 2.5f;
-            innerSensor.BackExtend = 3;
+            if (initOk == true)
+            {
+                Echo("Airlock setup OK!");
+            }
+            else
+            {
+                Echo("Failed to initialize, script halted");
+                Runtime.UpdateFrequency = UpdateFrequency.None;
+            }
         }
-
         public void Save()
         {
         }
-
         public void Main(string argument, UpdateType updateSource)
         {
-            if (AirlockReady())
+            for (int i=0; i < currentState.Count; i++)
             {
-                switch (currentState)
+                if (AirlockReady(i))
                 {
-                    case AirlockState.done:
-                        innerDoor.Enabled = false;
-                        outerDoor.Enabled = false;
-                        airlockLamp.Color = Color.Green;
-                        currentState = AirlockState.idle;
-                        break;
-                    case AirlockState.openingOuter:
-                        outerDoor.Enabled = true;
-                        outerDoor.OpenDoor();
-                        currentState = AirlockState.done;
-                        break;
-                    case AirlockState.closingOuter:
-                        outerDoor.Enabled = true;
-                        outerDoor.CloseDoor();
-                        currentState = AirlockState.pressurizing;
-                        break;
-                    case AirlockState.openingInner:
-                        innerDoor.Enabled = true;
-                        innerDoor.OpenDoor();
-                        currentState = AirlockState.done;
-                        break;
-                    case AirlockState.closingInner:
-                        innerDoor.Enabled = true;
-                        innerDoor.CloseDoor();
-                        currentState = AirlockState.depressurizing;
-                        break;
-                    case AirlockState.pressurizing:
-                        innerDoor.Enabled = false;
-                        outerDoor.Enabled = false;
-                        airVent.Depressurize = false;
-                        currentState = AirlockState.openingInner;
-                        break;
-                    case AirlockState.depressurizing:
-                        innerDoor.Enabled = false;
-                        outerDoor.Enabled = false;
-                        airVent.Depressurize = true;
-                        currentState = AirlockState.openingOuter;
-                        break;
-                    case AirlockState.init:
-                        airlockLamp.Color = Color.Red;
-                        innerDoor.Enabled = true;
-                        outerDoor.Enabled = true;
-                        innerDoor.OpenDoor();
-                        outerDoor.CloseDoor();
-                        currentState = AirlockState.done;
-                        break;
-                    case AirlockState.idle:
-                        if (innerSensor.IsActive)
-                        {
-                            if (outerDoor.Status == DoorStatus.Open)
+                    switch (currentState[i])
+                    {
+                        case AirlockState.done:
+                            innerDoors[i].Enabled = false;
+                            outerDoors[i].Enabled = false;
+                            lights[i].Color = Color.Green;
+                            currentState[i] = AirlockState.idle;
+                            break;
+                        case AirlockState.openingOuter:
+                            outerDoors[i].Enabled = true;
+                            outerDoors[i].OpenDoor();
+                            currentState[i] = AirlockState.done;
+                            break;
+                        case AirlockState.closingOuter:
+                            outerDoors[i].Enabled = true;
+                            outerDoors[i].CloseDoor();
+                            currentState[i] = AirlockState.pressurizing;
+                            break;
+                        case AirlockState.openingInner:
+                            innerDoors[i].Enabled = true;
+                            innerDoors[i].OpenDoor();
+                            currentState[i] = AirlockState.done;
+                            break;
+                        case AirlockState.closingInner:
+                            innerDoors[i].Enabled = true;
+                            innerDoors[i].CloseDoor();
+                            currentState[i] = AirlockState.depressurizing;
+                            break;
+                        case AirlockState.pressurizing:
+                            innerDoors[i].Enabled = false;
+                            outerDoors[i].Enabled = false;
+                            airvents[i].Depressurize = false;
+                            currentState[i] = AirlockState.openingInner;
+                            break;
+                        case AirlockState.depressurizing:
+                            innerDoors[i].Enabled = false;
+                            outerDoors[i].Enabled = false;
+                            airvents[i].Depressurize = true;
+                            currentState[i] = AirlockState.openingOuter;
+                            break;
+                        case AirlockState.init:
+                            lights[i].Color = Color.Red;
+                            innerDoors[i].Enabled = true;
+                            outerDoors[i].Enabled = true;
+                            innerDoors[i].OpenDoor();
+                            outerDoors[i].CloseDoor();
+                            currentState[i] = AirlockState.done;
+                            break;
+                        case AirlockState.idle:
+                            if (innerSensors[i].IsActive)
                             {
-                                airlockLamp.Color = Color.Red;
-                                currentState = AirlockState.closingOuter;
+                                if (outerDoors[i].Status == DoorStatus.Open)
+                                {
+                                    lights[i].Color = Color.Red;
+                                    currentState[i] = AirlockState.closingOuter;
+                                }
                             }
-                        }
-                        else if (outerSensor.IsActive)
-                        {
-                            if (innerDoor.Status == DoorStatus.Open)
+                            else if (outerSensors[i].IsActive)
                             {
-                                airlockLamp.Color = Color.Red;
-                                currentState = AirlockState.closingInner;
+                                if (innerDoors[i].Status == DoorStatus.Open)
+                                {
+                                    lights[i].Color = Color.Red;
+                                    currentState[i] = AirlockState.closingInner;
+                                }
                             }
-                        }
-                        break;
-                    default:
-                        break;
+                            break;
+                        default:
+                            break;
+                    }
                 }
             }
         }
@@ -173,16 +202,82 @@ namespace IngameScript
         /// <summary>
         /// Checks if the airlock is ready.
         /// </summary>
-        /// <returns>Tru if ready, false if busy.</returns>
-        private bool AirlockReady()
+        /// <returns>True if ready, false if busy.</returns>
+        private bool AirlockReady(int index)
         {
-            if ((outerDoor.Status == DoorStatus.Opening) ||
-                (outerDoor.Status == DoorStatus.Closing) ||
-                (innerDoor.Status == DoorStatus.Opening) ||
-                (innerDoor.Status == DoorStatus.Closing))
+            if ((outerDoors[index].Status == DoorStatus.Opening) ||
+                (outerDoors[index].Status == DoorStatus.Closing) ||
+                (innerDoors[index].Status == DoorStatus.Opening) ||
+                (innerDoors[index].Status == DoorStatus.Closing))
             {
                 return false;
             }
+            return true;
+        }
+        bool GetInnerDoor(List<IMyDoor> list)
+        {
+            string name = "InnerDoor";
+            if (!list.Exists(x => x.Name == name))
+            {
+                Echo($"{name} not found.");
+                return false;
+            }
+            innerDoors.Add(list.Find(x => x.Name == name));
+            return true;
+        }
+        bool GetOuterDoor(List<IMyDoor> list)
+        {
+            string name = "OuterDoor";
+            if (!list.Exists(x => x.Name == name))
+            {
+                Echo($"{name} not found.");
+                return false;
+            } 
+            outerDoors.Add(list.FindLast(x => x.Name == name));
+            return true;
+        }
+        bool GetInnerSensor(List<IMySensorBlock> list)
+        {
+            string name = "InnerSensor";
+            if (!list.Exists(x => x.Name == name))
+            {
+                Echo($"{name} not found.");
+                return false;
+            }
+            innerSensors.Add(list.Find(x => x.Name == name));
+            return true;
+        }
+        bool GetOuterSensor(List<IMySensorBlock> list)
+        {
+            string name = "OuterSensor";
+            if (!list.Exists(x => x.Name == name))
+            {
+                Echo($"{name} not found.");
+                return false;
+            }
+            outerSensors.Add(list.Find(x => x.Name == name));
+            return true;
+        }
+        bool GetLight(List<IMyInteriorLight> list)
+        {
+            string name = "Light";
+            if (!list.Exists(x => x.Name == name))
+            {
+                Echo($"{name} not found.");
+                return false;
+            }
+            lights.Add(list.Find(x => x.Name == name));
+            return true;
+        }
+        bool GetAirVent(List<IMyAirVent> list)
+        {
+            string name = "Airvent";
+            if (!list.Exists(x => x.Name == name))
+            {
+                Echo($"{name} not found.");
+                return false;
+            }
+            airvents.Add(list.Find(x => x.Name == name));
             return true;
         }
     }
