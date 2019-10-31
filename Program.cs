@@ -26,7 +26,7 @@ namespace IngameScript
         List<IMyAirVent> airvents = new List<IMyAirVent>();
         List<IMySensorBlock> innerSensors = new List<IMySensorBlock>();
         List<IMySensorBlock> outerSensors = new List<IMySensorBlock>();
-        List<IMyLightingBlock> lights = new List<IMyLightingBlock>();
+        List<IMyInteriorLight> lights = new List<IMyInteriorLight>();
 
         enum AirlockState
         {
@@ -52,8 +52,8 @@ namespace IngameScript
             List<IMyBlockGroup> allGroups = new List<IMyBlockGroup>();
             List<IMyDoor> doors = new List<IMyDoor>();
             List<IMySensorBlock> sensors = new List<IMySensorBlock>();
-            List<IMyAirVent> airvents = new List<IMyAirVent>();
-            List<IMyInteriorLight> lights = new List<IMyInteriorLight>();
+            List<IMyAirVent> vents = new List<IMyAirVent>();
+            List<IMyInteriorLight> lamps = new List<IMyInteriorLight>();
 
             GridTerminalSystem.GetBlockGroups(allGroups);
 
@@ -68,14 +68,15 @@ namespace IngameScript
             {
                 doors.Clear();
                 sensors.Clear();
-                airvents.Clear();
-                lights.Clear();
+                vents.Clear();
+                lamps.Clear();
                 group.GetBlocksOfType(doors);
                 group.GetBlocksOfType(sensors);
-                group.GetBlocksOfType(airvents);
-                group.GetBlocksOfType(lights);
+                group.GetBlocksOfType(vents);
+                group.GetBlocksOfType(lamps);
 
-                if (!(GetInnerDoor(doors) || GetOuterDoor(doors) || GetInnerSensor(sensors) || GetOuterSensor(sensors) || GetAirVent(airvents)))
+
+                if (!(GetInnerDoor(doors) && GetOuterDoor(doors) && GetInnerSensor(sensors) && GetOuterSensor(sensors) && GetAirVent(vents)))
                 {
                     Echo($"Error in group {group.Name}");
                     initOk = false;
@@ -83,7 +84,8 @@ namespace IngameScript
                 }
 
                 // Lights are optional.
-                GetLight(lights);
+                GetLight(lamps);
+
                 currentState.Add(new AirlockState());
             }
             foreach (IMySensorBlock innerSensor in innerSensors)
@@ -107,6 +109,13 @@ namespace IngameScript
                 outerSensor.BackExtend = 3;
             }
 
+            Echo($"innerDoors:{innerDoors.Count()}");
+            Echo($"outerDoors:{outerDoors.Count()}");
+            Echo($"airvents:{airvents.Count()}");
+            Echo($"innerSensors:{innerSensors.Count()}");
+            Echo($"outerSensors:{outerSensors.Count()}");
+            Echo($"lights:{lights.Count()}");
+            Echo($"states:{currentState.Count()}");
             if (initOk == true)
             {
                 Echo("Airlock setup OK!");
@@ -217,67 +226,68 @@ namespace IngameScript
         bool GetInnerDoor(List<IMyDoor> list)
         {
             string name = "InnerDoor";
-            if (!list.Exists(x => x.Name == name))
+            if (!list.Exists(x => x.CustomName.Contains(name)))
             {
                 Echo($"{name} not found.");
                 return false;
             }
-            innerDoors.Add(list.Find(x => x.Name == name));
+            innerDoors.Add(list.Find(x => x.CustomName.Contains(name)));
             return true;
         }
         bool GetOuterDoor(List<IMyDoor> list)
         {
             string name = "OuterDoor";
-            if (!list.Exists(x => x.Name == name))
+            int i = list.FindIndex(x => x.CustomName.Contains(name));
+            if (i < 0)
             {
                 Echo($"{name} not found.");
                 return false;
             } 
-            outerDoors.Add(list.FindLast(x => x.Name == name));
+            outerDoors.Add(list[i]);
             return true;
         }
         bool GetInnerSensor(List<IMySensorBlock> list)
         {
             string name = "InnerSensor";
-            if (!list.Exists(x => x.Name == name))
+            if (!list.Exists(x => x.CustomName.Contains(name)))
             {
                 Echo($"{name} not found.");
                 return false;
             }
-            innerSensors.Add(list.Find(x => x.Name == name));
+            innerSensors.Add(list.Find(x => x.CustomName.Contains(name)));
             return true;
         }
         bool GetOuterSensor(List<IMySensorBlock> list)
         {
             string name = "OuterSensor";
-            if (!list.Exists(x => x.Name == name))
+            if (!list.Exists(x => x.CustomName.Contains(name)))
             {
                 Echo($"{name} not found.");
                 return false;
             }
-            outerSensors.Add(list.Find(x => x.Name == name));
+            outerSensors.Add(list.Find(x => x.CustomName.Contains(name)));
             return true;
         }
         bool GetLight(List<IMyInteriorLight> list)
         {
             string name = "Light";
-            if (!list.Exists(x => x.Name == name))
+            if (!list.Exists(x => x.CustomName.Contains(name)))
             {
                 Echo($"{name} not found.");
                 return false;
             }
-            lights.Add(list.Find(x => x.Name == name));
+            lights.Add(list.Find(x => x.CustomName.Contains(name)));
             return true;
         }
         bool GetAirVent(List<IMyAirVent> list)
         {
-            string name = "Airvent";
-            if (!list.Exists(x => x.Name == name))
+            string name = "AirVent";
+            if (!list.Exists(x => x.CustomName.Contains(name)))
             {
                 Echo($"{name} not found.");
                 return false;
             }
-            airvents.Add(list.Find(x => x.Name == name));
+            airvents.Add(list.Find(x => x.CustomName.Contains(name)));
             return true;
         }
     }
